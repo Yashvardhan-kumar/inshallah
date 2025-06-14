@@ -1,77 +1,83 @@
-# Only replacing TAB 4 and TAB 5 --- rest of your code stays exactly same
+import streamlit as st
+import datetime
 
-# TAB 4: Staff Gamification Upload (Improved UI)
-with tab4:
-    st.header("🚀 Participate in the Visual Menu Challenge")
-    st.markdown("Encourage your creativity and plating skills. Upload your best dish photos, get votes, and climb the leaderboard!")
+# Your existing code remains fully intact above this point
+# --- We start adding gamification layer below ---
 
-    with st.form("challenge_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            staff_name = st.text_input("👩‍🍳 Your Name")
-            dish_name = st.text_input("🍽️ Dish Name")
-            plating_style = st.selectbox("🎨 Plating Style", ["Minimalist", "Classic", "Fusion", "Artistic", "Rustic"])
-        with col2:
-            ingredients = st.text_area("📝 Ingredients (comma separated)")
-            challenge_image = st.file_uploader("📸 Upload Dish Photo", type=["jpg", "jpeg", "png"])
-
-        trendy = st.checkbox("🔥 Trending Dish?")
-        diet_match = st.checkbox("🥗 Matches Dietary Preferences?")
-
-        submitted = st.form_submit_button("✅ Submit Entry")
-
-        if submitted and challenge_image:
-            img_bytes = challenge_image.read()
-            img_blob = db.collection("visual_challenges").document()
-            img_blob.set({
-                "staff": staff_name,
-                "dish": dish_name,
-                "ingredients": [i.strip() for i in ingredients.split(",")],
-                "style": plating_style,
-                "trendy": trendy,
-                "diet_match": diet_match,
-                "timestamp": time.time(),
-                "views": 0,
-                "likes": 0,
-                "orders": 0
-            })
-            st.success("🎉 Dish submitted successfully!")
-
-# TAB 5: Leaderboard & Customer Feedback (Upgraded UI)
-with tab5:
-    st.header("🏆 Visual Menu Leaderboard")
-
-    entries = fetch_challenge_entries()
-
-    if entries:
-        leaderboard = sorted(entries, key=lambda e: calculate_score(e), reverse=True)
-
-        for i, entry in enumerate(leaderboard):
-            with st.container():
-                st.subheader(f"#{i+1} - {entry['dish']} by {entry['staff']}")
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    # If you want to store & retrieve images from firestore storage later, here we use placeholder
-                    st.image("https://via.placeholder.com/250x200.png?text=Dish+Image", caption="Dish Image")
-
-                with col2:
-                    st.write(f"🎨 Style: {entry['style']}")
-                    st.write(f"📝 Ingredients: {', '.join(entry['ingredients'])}")
-                    st.write(f"🔥 Current Score: **{calculate_score(entry)} pts**")
-
-                    like_col, view_col, order_col = st.columns(3)
-
-                    with like_col:
-                        if st.button(f"❤️ Like ({entry['likes']})", key=f"like_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"likes": entry['likes'] + 1})
-                            st.experimental_rerun()
-                    with view_col:
-                        if st.button(f"👀 View ({entry['views']})", key=f"view_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"views": entry['views'] + 1})
-                            st.experimental_rerun()
-                    with order_col:
-                        if st.button(f"🛒 Order ({entry['orders']})", key=f"order_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"orders": entry['orders'] + 1})
-                            st.experimental_rerun()
+# Gamification Firestore Setup (reuse existing db)
+def get_user_profile(user_id):
+    user_ref = db.collection("user_profiles").document(user_id)
+    user_doc = user_ref.get()
+    if user_doc.exists:
+        return user_doc.to_dict()
     else:
-        st.warning("🚫 No entries submitted yet. Encourage your staff to participate!")
+        profile = {"xp": 0, "level": 1, "stars": 0, "badges": [], "last_active": str(datetime.date.today())}
+        user_ref.set(profile)
+        return profile
+
+def update_user_profile(user_id, updates):
+    user_ref = db.collection("user_profiles").document(user_id)
+    user_ref.update(updates)
+
+# Dummy user (replace with login system if needed)
+USER_ID = "demo_user"
+profile = get_user_profile(USER_ID)
+
+# Gamification Functions
+def add_xp(user_id, xp):
+    profile = get_user_profile(user_id)
+    new_xp = profile["xp"] + xp
+    new_level = 1 + new_xp // 100
+    update_user_profile(user_id, {"xp": new_xp, "level": new_level, "last_active": str(datetime.date.today())})
+
+def add_stars(user_id, stars):
+    profile = get_user_profile(user_id)
+    update_user_profile(user_id, {"stars": profile["stars"] + stars})
+
+def add_badge(user_id, badge):
+    profile = get_user_profile(user_id)
+    if badge not in profile["badges"]:
+        profile["badges"].append(badge)
+        update_user_profile(user_id, {"badges": profile["badges"]})
+
+# Create new tab
+with st.sidebar.expander("🎮 Gamification & Profile"):
+    st.subheader("Player Profile")
+    st.write(f"**Level:** {profile['level']}")
+    st.write(f"**XP:** {profile['xp']}")
+    st.write(f"**Stars:** {profile['stars']}")
+    st.write(f"**Badges:** {', '.join(profile['badges']) if profile['badges'] else 'No badges yet'}")
+
+# Daily Challenge
+st.sidebar.markdown("---")
+today = str(datetime.date.today())
+if profile.get("last_active") != today:
+    challenge_dish = random.choice(["Pizza", "Sushi", "Burger", "Salad", "Tacos"])
+    st.sidebar.success(f"🎯 Daily Challenge: Upload an image of {challenge_dish} today!")
+    update_user_profile(USER_ID, {"last_active": today})
+
+# Check challenge completion during dish detection
+if 'dish_name' in locals() and dish_name.lower() == challenge_dish.lower():
+    add_xp(USER_ID, 50)
+    add_badge(USER_ID, "Daily Streak!")
+    st.sidebar.balloons()
+    st.sidebar.success("✅ Daily Challenge Completed! You earned 50 XP & a badge!")
+
+# Word Search reward integration
+if 'found_count' in locals() and found_count == total_words and st.session_state.stars == 5:
+    add_xp(USER_ID, 20)
+    add_stars(USER_ID, 5)
+    add_badge(USER_ID, "Word Search Master")
+    st.sidebar.success("🏅 Perfect Word Search! +20 XP, +5 Stars, Badge earned!")
+
+# Simple leaderboard (local)
+@st.cache_data(ttl=300)
+def load_leaderboard():
+    docs = db.collection("user_profiles").stream()
+    data = sorted([{**doc.to_dict(), "id": doc.id} for doc in docs], key=lambda x: x['xp'], reverse=True)
+    return data
+
+with st.sidebar.expander("🏆 Leaderboard"):
+    leaderboard = load_leaderboard()
+    for rank, player in enumerate(leaderboard[:5], start=1):
+        st.write(f"{rank}. {player['id']} - Level {player['level']} ({player['xp']} XP)")
