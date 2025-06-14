@@ -12,7 +12,7 @@ import time
 
 # Streamlit config
 st.set_page_config(page_title="Next-Gen Dish Recommender + Gamification", layout="wide")
-st.title("\U0001F37D️ Visual Menu Challenge & Recommendation Platform")
+st.title("🍽️ Visual Menu Challenge & Recommendation Platform")
 
 # Credentials Initialization (use your secrets.toml)
 try:
@@ -44,6 +44,7 @@ def fetch_challenge_entries():
 
 def calculate_score(entry):
     base_score = entry.get("views", 0) + entry.get("likes", 0) * 2 + entry.get("orders", 0) * 3
+    # Simple bonus for trends or preferences matching
     if entry.get("trendy"): base_score += 5
     if entry.get("diet_match"): base_score += 3
     return base_score
@@ -54,9 +55,9 @@ dietary = st.sidebar.multiselect("Diet", ["Vegan", "Vegetarian", "Keto", "Gluten
 allergies = st.sidebar.multiselect("Allergies", ["Nut-Free", "Shellfish-Free", "Soy-Free", "Dairy-Free"], default=[])
 
 # TABS
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["\U0001F4F7 AI Dish Detection", "\U0001F3AF Personalized Menu", "\u2699\ufe0f Custom Filters", "\U0001F3C5 Visual Menu Challenge", "\U0001F4CA Leaderboard"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📷 AI Dish Detection", "🎯 Personalized Menu", "⚙️ Custom Filters", "🏅 Visual Menu Challenge", "📊 Leaderboard"])
 
-# TAB 1: AI Dish Detection
+# TAB 1: AI Dish Detection (Existing Features)
 with tab1:
     st.header("Visual Dish Detection (AI + Vision API)")
     uploaded_file = st.file_uploader("Upload Food Image", type=["jpg", "jpeg", "png"])
@@ -106,25 +107,20 @@ with tab3:
             filtered_menu.append(item_copy)
     st.write(pd.DataFrame(filtered_menu))
 
-# TAB 4: Staff Gamification Upload (Upgraded UI)
+# TAB 4: Staff Gamification Upload
 with tab4:
-    st.header("\U0001F680 Participate in the Visual Menu Challenge")
-    st.markdown("Encourage your creativity and plating skills. Upload your best dish photos, get votes, and climb the leaderboard!")
+    st.header("Visual Menu Challenge Submission")
 
     with st.form("challenge_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            staff_name = st.text_input("\U0001F469‍‍\U0001F373 Your Name")
-            dish_name = st.text_input("🍽️ Dish Name")
-            plating_style = st.selectbox("\U0001F3A8 Plating Style", ["Minimalist", "Classic", "Fusion", "Artistic", "Rustic"])
-        with col2:
-            ingredients = st.text_area("📝 Ingredients (comma separated)")
-            challenge_image = st.file_uploader("📸 Upload Dish Photo", type=["jpg", "jpeg", "png"])
+        staff_name = st.text_input("Staff Name")
+        dish_name = st.text_input("Dish Name")
+        ingredients = st.text_area("Ingredients (comma separated)")
+        plating_style = st.text_input("Plating Style")
+        challenge_image = st.file_uploader("Dish Photo", type=["jpg", "png"])
+        trendy = st.checkbox("Matches current food trends")
+        diet_match = st.checkbox("Matches dietary preferences")
 
-        trendy = st.checkbox("🔥 Trending Dish?")
-        diet_match = st.checkbox("🥗 Matches Dietary Preferences?")
-
-        submitted = st.form_submit_button("✅ Submit Entry")
+        submitted = st.form_submit_button("Submit Dish")
 
         if submitted and challenge_image:
             img_bytes = challenge_image.read()
@@ -141,42 +137,37 @@ with tab4:
                 "likes": 0,
                 "orders": 0
             })
-            st.success("\U0001F389 Dish submitted successfully!")
+            st.success("Dish submitted successfully!")
 
-# TAB 5: Leaderboard & Customer Feedback (Fully Upgraded UI)
+# TAB 5: Leaderboard & Customer Feedback
 with tab5:
-    st.header("\U0001F3C6 Visual Menu Leaderboard")
+    st.header("Leaderboard & Voting")
 
     entries = fetch_challenge_entries()
 
-    if entries:
-        leaderboard = sorted(entries, key=lambda e: calculate_score(e), reverse=True)
+    for entry in entries:
+        with st.container():
+            st.subheader(f"{entry['dish']} by {entry['staff']}")
+            st.write(f"Style: {entry['style']}")
+            st.write(f"Ingredients: {', '.join(entry['ingredients'])}")
 
-        for i, entry in enumerate(leaderboard):
-            with st.container():
-                st.subheader(f"#{i+1} - {entry['dish']} by {entry['staff']}")
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.image("https://via.placeholder.com/250x200.png?text=Dish+Image", caption="Dish Image")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button(f"❤️ Like ({entry['likes']})", key=f"like_{entry['id']}"):
+                    db.collection("visual_challenges").document(entry['id']).update({"likes": entry['likes'] + 1})
+                    st.experimental_rerun()
+            with col2:
+                if st.button(f"👀 View ({entry['views']})", key=f"view_{entry['id']}"):
+                    db.collection("visual_challenges").document(entry['id']).update({"views": entry['views'] + 1})
+                    st.experimental_rerun()
+            with col3:
+                if st.button(f"🛒 Order ({entry['orders']})", key=f"order_{entry['id']}"):
+                    db.collection("visual_challenges").document(entry['id']).update({"orders": entry['orders'] + 1})
+                    st.experimental_rerun()
 
-                with col2:
-                    st.write(f"🎨 Style: {entry['style']}")
-                    st.write(f"📝 Ingredients: {', '.join(entry['ingredients'])}")
-                    st.write(f"🔥 Current Score: **{calculate_score(entry)} pts**")
+    # Show leaderboard
+    st.subheader("🏆 Live Leaderboard")
+    leaderboard = sorted(entries, key=lambda e: calculate_score(e), reverse=True)
+    for i, entry in enumerate(leaderboard[:5]):
+        st.write(f"**#{i+1} - {entry['dish']} by {entry['staff']} → {calculate_score(entry)} pts**")
 
-                    like_col, view_col, order_col = st.columns(3)
-
-                    with like_col:
-                        if st.button(f"❤️ Like ({entry['likes']})", key=f"like_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"likes": entry['likes'] + 1})
-                            st.experimental_rerun()
-                    with view_col:
-                        if st.button(f"👀 View ({entry['views']})", key=f"view_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"views": entry['views'] + 1})
-                            st.experimental_rerun()
-                    with order_col:
-                        if st.button(f"🛒 Order ({entry['orders']})", key=f"order_{entry['id']}"):
-                            db.collection("visual_challenges").document(entry['id']).update({"orders": entry['orders'] + 1})
-                            st.experimental_rerun()
-    else:
-        st.warning("🚫 No entries submitted yet. Encourage your staff to participate!")
