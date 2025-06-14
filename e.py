@@ -7,13 +7,14 @@ import google.generativeai as genai
 from PIL import Image
 import io
 import pandas as pd
+import random
 import time
 
 # Streamlit config
 st.set_page_config(page_title="Next-Gen Dish Recommender + Gamification", layout="wide")
-st.title("\U0001F37D\ufe0f Dish Recognition and Menu Matching")
+st.title("🍽️ Visual Menu Challenge & Recommendation Platform")
 
-# Credentials Initialization
+# Credentials Initialization (use your secrets.toml)
 try:
     vision_credentials_dict = dict(st.secrets["GOOGLE_CLOUD_VISION_CREDENTIALS"])
     vision_credentials = service_account.Credentials.from_service_account_info(vision_credentials_dict)
@@ -43,21 +44,23 @@ def fetch_challenge_entries():
 
 def calculate_score(entry):
     base_score = entry.get("views", 0) + entry.get("likes", 0) * 2 + entry.get("orders", 0) * 3
+    # Simple bonus for trends or preferences matching
     if entry.get("trendy"): base_score += 5
     if entry.get("diet_match"): base_score += 3
     return base_score
 
 # Sidebar Preferences
-st.sidebar.header("Dietary Preferences")
-dietary = st.sidebar.multiselect("Select Dietary Preferences", ["Vegan", "Vegetarian", "Keto", "Gluten-Free", "Paleo"], default=[])
+st.sidebar.header("Customer Preferences")
+dietary = st.sidebar.multiselect("Diet", ["Vegan", "Vegetarian", "Keto", "Gluten-Free", "Paleo"], default=[])
+allergies = st.sidebar.multiselect("Allergies", ["Nut-Free", "Shellfish-Free", "Soy-Free", "Dairy-Free"], default=[])
 
-# MAIN MENU NAVIGATION
-menu_choice = st.sidebar.radio("", ["Dish Recognition", "Menu Exploration", "Gamification Challenge", "Leaderboard"])
+# TABS
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📷 AI Dish Detection", "🎯 Personalized Menu", "⚙️ Custom Filters", "🏅 Visual Menu Challenge", "📊 Leaderboard"])
 
-# Dish Recognition Page
-if menu_choice == "Dish Recognition":
-    st.header("Upload and Match Dish")
-    uploaded_file = st.file_uploader("Upload an image of the dish (JPG or PNG)", type=["jpg", "jpeg", "png"])
+# TAB 1: AI Dish Detection (Existing Features)
+with tab1:
+    st.header("Visual Dish Detection (AI + Vision API)")
+    uploaded_file = st.file_uploader("Upload Food Image", type=["jpg", "jpeg", "png"])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded", use_column_width=True)
@@ -73,22 +76,40 @@ if menu_choice == "Dish Recognition":
 
         st.success(f"Predicted Dish: {dish_guess}")
 
-# Menu Exploration Page
-elif menu_choice == "Menu Exploration":
-    st.header("Personalized Menu Suggestions")
+# TAB 2: Personalized Menu Recommendations
+with tab2:
+    st.header("Personalized AI Menu")
     menu = fetch_menu()
     menu_text = "\n".join([
         f"- {item['name']}: {item.get('description', '')} ({', '.join(item.get('dietary_tags', []))})"
         for item in menu
     ])
-    user_profile = f"Diet: {dietary}"
+    user_profile = f"Diet: {dietary}, Allergies: {allergies}"
     prompt = f"Given user profile ({user_profile}) recommend 5 dishes:\n{menu_text}"
     ai_result = gemini_model.generate_content(prompt).text.strip()
     st.markdown(ai_result)
 
-# Gamification Upload Page
-elif menu_choice == "Gamification Challenge":
-    st.header("\U0001F947 Submit Your Visual Menu Challenge")
+# TAB 3: Custom Filtering Options
+with tab3:
+    st.header("Custom Menu Filters")
+    portion = st.selectbox("Portion Size", ["Regular", "Small", "Large"])
+    ingredient_swap = st.text_input("Ingredient Swap")
+
+    filtered_menu = []
+    for item in menu:
+        tags = item.get("dietary_tags", [])
+        ingredients = item.get("ingredients", [])
+        if (not dietary or any(d in tags for d in dietary)) and \
+           (not allergies or all(a not in ingredients for a in allergies)):
+            item_copy = item.copy()
+            item_copy["portion_size"] = portion
+            item_copy["ingredient_swap"] = ingredient_swap
+            filtered_menu.append(item_copy)
+    st.write(pd.DataFrame(filtered_menu))
+
+# TAB 4: Staff Gamification Upload
+with tab4:
+    st.header("Visual Menu Challenge Submission")
 
     with st.form("challenge_form"):
         staff_name = st.text_input("Staff Name")
@@ -98,7 +119,7 @@ elif menu_choice == "Gamification Challenge":
         challenge_image = st.file_uploader("Dish Photo", type=["jpg", "png"])
         trendy = st.checkbox("Matches current food trends")
         diet_match = st.checkbox("Matches dietary preferences")
-        
+
         submitted = st.form_submit_button("Submit Dish")
 
         if submitted and challenge_image:
@@ -118,11 +139,12 @@ elif menu_choice == "Gamification Challenge":
             })
             st.success("Dish submitted successfully!")
 
-# Leaderboard Page
-elif menu_choice == "Leaderboard":
-    st.header("\U0001F3C6 Live Leaderboard & Voting")
+# TAB 5: Leaderboard & Customer Feedback
+with tab5:
+    st.header("Leaderboard & Voting")
 
     entries = fetch_challenge_entries()
+
     for entry in entries:
         with st.container():
             st.subheader(f"{entry['dish']} by {entry['staff']}")
@@ -143,7 +165,9 @@ elif menu_choice == "Leaderboard":
                     db.collection("visual_challenges").document(entry['id']).update({"orders": entry['orders'] + 1})
                     st.experimental_rerun()
 
-    st.subheader("Top Scoring Dishes")
+    # Show leaderboard
+    st.subheader("🏆 Live Leaderboard")
     leaderboard = sorted(entries, key=lambda e: calculate_score(e), reverse=True)
     for i, entry in enumerate(leaderboard[:5]):
         st.write(f"**#{i+1} - {entry['dish']} by {entry['staff']} → {calculate_score(entry)} pts**")
+
