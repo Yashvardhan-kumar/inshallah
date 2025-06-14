@@ -44,7 +44,6 @@ def fetch_challenge_entries():
 
 def calculate_score(entry):
     base_score = entry.get("views", 0) + entry.get("likes", 0) * 2 + entry.get("orders", 0) * 3
-    # Simple bonus for trends or preferences matching
     if entry.get("trendy"): base_score += 5
     if entry.get("diet_match"): base_score += 3
     return base_score
@@ -107,7 +106,9 @@ with tab3:
             filtered_menu.append(item_copy)
     st.write(pd.DataFrame(filtered_menu))
 
-# TAB 4: Staff Gamification Upload
+# ==========================
+# TAB 4: Staff Gamification Upload (UPDATED)
+# ==========================
 with tab4:
     st.header("Visual Menu Challenge Submission")
 
@@ -125,6 +126,7 @@ with tab4:
         if submitted and challenge_image:
             img_bytes = challenge_image.read()
             img_blob = db.collection("visual_challenges").document()
+
             img_blob.set({
                 "staff": staff_name,
                 "dish": dish_name,
@@ -135,11 +137,14 @@ with tab4:
                 "timestamp": time.time(),
                 "views": 0,
                 "likes": 0,
-                "orders": 0
+                "orders": 0,
+                "score": 0  # store score directly
             })
             st.success("Dish submitted successfully!")
 
-# TAB 5: Leaderboard & Customer Feedback
+# ==========================
+# TAB 5: Leaderboard & Voting (UPDATED)
+# ==========================
 with tab5:
     st.header("Leaderboard & Voting")
 
@@ -155,19 +160,36 @@ with tab5:
             with col1:
                 if st.button(f"❤️ Like ({entry['likes']})", key=f"like_{entry['id']}"):
                     db.collection("visual_challenges").document(entry['id']).update({"likes": entry['likes'] + 1})
-                    st.experimental_rerun()
             with col2:
                 if st.button(f"👀 View ({entry['views']})", key=f"view_{entry['id']}"):
                     db.collection("visual_challenges").document(entry['id']).update({"views": entry['views'] + 1})
-                    st.experimental_rerun()
             with col3:
                 if st.button(f"🛒 Order ({entry['orders']})", key=f"order_{entry['id']}"):
                     db.collection("visual_challenges").document(entry['id']).update({"orders": entry['orders'] + 1})
-                    st.experimental_rerun()
 
-    # Show leaderboard
+    # Refresh entries after possible updates
+    updated_entries = fetch_challenge_entries()
+
+    # Recalculate score for leaderboard
+    for entry in updated_entries:
+        score = (
+            entry.get("views", 0)
+            + entry.get("likes", 0) * 2
+            + entry.get("orders", 0) * 3
+            + (5 if entry.get("trendy") else 0)
+            + (3 if entry.get("diet_match") else 0)
+        )
+        db.collection("visual_challenges").document(entry['id']).update({
+            "score": score
+        })
+
     st.subheader("🏆 Live Leaderboard")
-    leaderboard = sorted(entries, key=lambda e: calculate_score(e), reverse=True)
+    leaderboard = sorted(updated_entries, key=lambda e: e.get("score", 0), reverse=True)
     for i, entry in enumerate(leaderboard[:5]):
-        st.write(f"**#{i+1} - {entry['dish']} by {entry['staff']} → {calculate_score(entry)} pts**")
+        st.write(f"**#{i+1} - {entry['dish']} by {entry['staff']} → {entry['score']} pts**")
 
+    st.markdown("---")
+    st.subheader("🎉 Monthly Winner")
+    if leaderboard:
+        top = leaderboard[0]
+        st.write(f"**{top['dish']} by {top['staff']} with {top['score']} points**")
