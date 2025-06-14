@@ -276,6 +276,9 @@ with tab2:
         st.error(f"AI analysis failed: {e}")
 
 
+# Normalize sidebar inputs
+normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
+
 # TAB 3: Custom Filtering Options
 with tab3:
     st.header("Custom Menu Filters")
@@ -284,27 +287,19 @@ with tab3:
 
     # Allergy mapping
     allergy_map = {
-        "Nut-Free": [
-            "almond", "cashew", "walnut", "pecan", "hazelnut", "macadamia", "brazil nut", "pistachio", "peanut", "nut"
-        ],
-        "Shellfish-Free": [
-            "shrimp", "prawn", "crab", "lobster", "oyster", "scallop", "clam", "mussel", "shellfish"
-        ],
-        "Soy-Free": [
-            "soy", "tofu", "soya", "edamame", "soy sauce", "miso", "tempeh"
-        ],
-        "Dairy-Free": [
-            "milk", "cheese", "butter", "yogurt", "cream", "paneer", "curd", "ghee", "whey", "casein", "lactose"
-        ]
+        "Nut-Free": ["almond", "cashew", "walnut", "pecan", "hazelnut", "macadamia", "brazil nut", "pistachio", "peanut", "nut"],
+        "Shellfish-Free": ["shrimp", "prawn", "crab", "lobster", "oyster", "scallop", "clam", "mussel", "shellfish"],
+        "Soy-Free": ["soy", "tofu", "soya", "edamame", "soy sauce", "miso", "tempeh"],
+        "Dairy-Free": ["milk", "cheese", "butter", "yogurt", "cream", "paneer", "curd", "ghee", "whey", "casein", "lactose"]
     }
 
     filtered_menu = []
     for item in menu:
-        tags = [tag.lower() for tag in item.get("dietary_tags", [])]
+        tags = [tag.lower().replace("-", "").replace(" ", "") for tag in item.get("dietary_tags", [])]
         ingredients = [ing.lower() for ing in item.get("ingredients", [])]
 
         # Diet filter
-        diet_ok = not dietary or any(diet.lower() in tags for diet in dietary)
+        diet_ok = not normalized_dietary or any(diet in tags for diet in normalized_dietary)
 
         # Allergy filter
         allergy_ok = True
@@ -324,6 +319,7 @@ with tab3:
         st.write(pd.DataFrame(filtered_menu))
     else:
         st.warning("No menu items match your filters.")
+
 
 
 # TAB 5: Leaderboard & Customer Feedback
