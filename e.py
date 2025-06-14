@@ -198,19 +198,50 @@ with tab1:
         except Exception as e:
             st.error(f"AI analysis failed: {e}")
 
-# TAB 2: Personalized Menu Recommendations (Enhanced)
 with tab2:
     st.header("Personalized AI Menu")
     menu = fetch_menu()
+    
+    # Build allergy keywords map (simplified)
+    allergy_keywords = {
+        "Dairy-Free": ["milk", "cheese", "butter", "cream", "yogurt", "paneer", "ghee", "curd", "ice cream", "whey", "casein"],
+        "Nut-Free": ["almond", "cashew", "peanut", "hazelnut", "walnut", "pistachio", "pecan"],
+        "Shellfish-Free": ["shrimp", "crab", "lobster", "prawn", "clam", "mussel", "oyster", "scallop"],
+        "Soy-Free": ["soy", "tofu", "soya", "edamame", "soybean", "soy milk"]
+    }
+    
+    # Pre-filter menu based on allergies and dietary
+    filtered_menu = []
+    for item in menu:
+        ingredients = [ing.lower() for ing in item.get('ingredients', [])]
+        tags = [tag.lower() for tag in item.get('dietary_tags', [])]
+
+        allergy_safe = True
+        for allergy in allergies:
+            allergy_list = allergy_keywords.get(allergy, [])
+            if any(allergen in ing for allergen in allergy_list for ing in ingredients):
+                allergy_safe = False
+                break
+        
+        diet_safe = all(diet.lower() in tags for diet in dietary) if dietary else True
+        
+        if allergy_safe and diet_safe:
+            filtered_menu.append(item)
+
+    if not filtered_menu:
+        st.warning("No menu items match your preferences and allergy restrictions.")
+        st.stop()
+
+    # Prepare menu text for Gemini after filtering
     menu_text = "\n".join([
         f"- {item['name']}: {item.get('description', '')} (Ingredients: {', '.join(item.get('ingredients', []))}; Tags: {', '.join(item.get('dietary_tags', []))})"
-        for item in menu
+        for item in filtered_menu
     ])
+
     user_profile = f"Diet: {', '.join(dietary) if dietary else 'None'}, Allergies: {', '.join(allergies) if allergies else 'None'}"
     order_history = fetch_order_history(user_id)
     order_summary = "\n".join([f"- {order['dish_name']} (Ordered on: {time.ctime(order['timestamp'])})" for order in order_history]) if order_history else "No order history available."
 
-    # Add popular trends context
     popular_trends = "Current popular trends include plant-based proteins, fermented foods, and low-carb options."
 
     prompt = f"""
@@ -221,9 +252,10 @@ with tab2:
     - Menu: {menu_text}
 
     Tasks:
-    1. Recommend 5 dishes that align with the user's dietary preferences, allergies, past orders, and current trends.
-    2. For pasta dishes, suggest variations like gluten-free penne, zucchini noodles, or customizable sauces.
-    3. For desserts, suggest low-sugar, dairy-free, or healthy alternatives.
+    1. Recommend 5 dishes that align strictly with the user's dietary preferences and allergy restrictions.
+    2. Ensure that dairy-free dishes contain no milk, cheese, butter, cream, yogurt, paneer, or ghee.
+    3. For pasta dishes, suggest variations like gluten-free penne, zucchini noodles, or customizable sauces.
+    4. For desserts, suggest low-sugar, dairy-free, or healthy alternatives.
 
     Format the response as:
     **Recommended Dishes**:
@@ -236,8 +268,13 @@ with tab2:
     - [Alternative]: [Description]
     - ...
     """
-    ai_result = gemini_model.generate_content(prompt).text.strip()
-    st.markdown(ai_result)
+
+    try:
+        ai_result = gemini_model.generate_content(prompt).text.strip()
+        st.markdown(ai_result)
+    except Exception as e:
+        st.error(f"AI analysis failed: {e}")
+
 
 # TAB 3: Custom Filtering Options
 with tab3:
