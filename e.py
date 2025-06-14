@@ -276,18 +276,10 @@ with tab2:
         st.error(f"AI analysis failed: {e}")
 
 
-# Normalize sidebar inputs
-normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
-
-# TAB 3: Custom Filtering Options
 with tab3:
     st.header("Custom Menu Filters")
     portion = st.selectbox("Portion Size", ["Regular", "Small", "Large"])
     ingredient_swap = st.text_input("Ingredient Swap")
-
-    # Normalize sidebar inputs for dietary
-    normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
-    normalized_allergies = allergies  # allergies we will map below
 
     allergy_map = {
         "Nut-Free": ["almond", "cashew", "walnut", "pecan", "hazelnut", "macadamia", "brazil nut", "pistachio", "peanut", "nut"],
@@ -296,22 +288,26 @@ with tab3:
         "Dairy-Free": ["milk", "cheese", "butter", "yogurt", "cream", "paneer", "curd", "ghee", "whey", "casein", "lactose"]
     }
 
+    # Normalize inputs
+    normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
+    normalized_allergies = [a for a in allergies]
+
     filtered_menu = []
+
     for item in menu:
-        tags = [tag.lower().replace("-", "").replace(" ", "") for tag in item.get("dietary_tags", [])]
-        ingredients = [ing.lower() for ing in item.get("ingredients", [])]
+        tags = [t.lower().replace("-", "").replace(" ", "") for t in item.get("dietary_tags", [])]
+        ingredients = [i.lower() for i in item.get("ingredients", [])]
 
-        # If menu item has no tags → assume it's compatible
-        if not tags:
-            diet_ok = True
-        else:
-            diet_ok = not normalized_dietary or any(nd in tags for nd in normalized_dietary)
+        # Diet filter check
+        diet_ok = True
+        if normalized_dietary:
+            diet_ok = any(nd in tags for nd in normalized_dietary)
 
-        # Allergy filter
+        # Allergy filter check
         allergy_ok = True
         for allergy in normalized_allergies:
-            restricted_terms = allergy_map.get(allergy, [])
-            if any(term in ing for ing in ingredients for term in restricted_terms):
+            allergen_ingredients = allergy_map.get(allergy, [])
+            if any(allergen in ingredient for allergen in allergen_ingredients for ingredient in ingredients):
                 allergy_ok = False
                 break
 
@@ -324,7 +320,7 @@ with tab3:
     if filtered_menu:
         st.write(pd.DataFrame(filtered_menu))
     else:
-        st.warning("No menu items match your filters.")
+        st.warning("No menu items match the selected filters.")
 
 
 # TAB 5: Leaderboard & Customer Feedback
