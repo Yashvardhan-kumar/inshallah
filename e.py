@@ -282,7 +282,7 @@ with tab3:
     portion = st.selectbox("Portion Size", ["Regular", "Small", "Large"])
     ingredient_swap = st.text_input("Ingredient Swap")
 
-    # Advanced Allergy Mapping
+    # Allergy mapping
     allergy_map = {
         "Nut-Free": [
             "almond", "cashew", "walnut", "pecan", "hazelnut", "macadamia", "brazil nut", "pistachio", "peanut", "nut"
@@ -300,13 +300,13 @@ with tab3:
 
     filtered_menu = []
     for item in menu:
-        tags = item.get("dietary_tags", [])
+        tags = [tag.lower() for tag in item.get("dietary_tags", [])]
         ingredients = [ing.lower() for ing in item.get("ingredients", [])]
 
-        # Dietary tag filter (same as before)
-        diet_ok = not dietary or any(d in tags for d in dietary)
+        # Diet filter
+        diet_ok = not dietary or any(diet.lower() in tags for diet in dietary)
 
-        # Allergy filter (advanced)
+        # Allergy filter
         allergy_ok = True
         for allergy in allergies:
             restricted_terms = allergy_map.get(allergy, [])
