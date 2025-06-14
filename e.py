@@ -288,34 +288,34 @@ with tab3:
         "Dairy-Free": ["milk", "cheese", "butter", "yogurt", "cream", "paneer", "curd", "ghee", "whey", "casein", "lactose"]
     }
 
-    # Normalize inputs
-    normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
-    normalized_allergies = [a for a in allergies]
+    filtered_menu = menu
 
-    filtered_menu = []
+    # Apply diet filter first
+    if dietary:
+        filtered_menu = [
+            item for item in filtered_menu 
+            if any(d.lower() in [tag.lower() for tag in item.get("dietary_tags", [])] for d in dietary)
+        ]
 
-    for item in menu:
-        tags = [t.lower().replace("-", "").replace(" ", "") for t in item.get("dietary_tags", [])]
-        ingredients = [i.lower() for i in item.get("ingredients", [])]
+    # Apply allergy filter next
+    if allergies:
+        final_filtered_menu = []
+        for item in filtered_menu:
+            ingredients = [i.lower() for i in item.get("ingredients", [])]
+            allergy_safe = True
+            for allergy in allergies:
+                forbidden = allergy_map.get(allergy, [])
+                if any(bad in ingredient for bad in forbidden for ingredient in ingredients):
+                    allergy_safe = False
+                    break
+            if allergy_safe:
+                final_filtered_menu.append(item)
+        filtered_menu = final_filtered_menu
 
-        # Diet filter check
-        diet_ok = True
-        if normalized_dietary:
-            diet_ok = any(nd in tags for nd in normalized_dietary)
-
-        # Allergy filter check
-        allergy_ok = True
-        for allergy in normalized_allergies:
-            allergen_ingredients = allergy_map.get(allergy, [])
-            if any(allergen in ingredient for allergen in allergen_ingredients for ingredient in ingredients):
-                allergy_ok = False
-                break
-
-        if diet_ok and allergy_ok:
-            item_copy = item.copy()
-            item_copy["portion_size"] = portion
-            item_copy["ingredient_swap"] = ingredient_swap
-            filtered_menu.append(item_copy)
+    # Add portion + ingredient swap info
+    for item in filtered_menu:
+        item["portion_size"] = portion
+        item["ingredient_swap"] = ingredient_swap
 
     if filtered_menu:
         st.write(pd.DataFrame(filtered_menu))
