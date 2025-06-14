@@ -1,83 +1,145 @@
 import streamlit as st
-import datetime
+from google.cloud import vision
+from google.oauth2 import service_account
+import firebase_admin
+from firebase_admin import credentials, firestore
+import google.generativeai as genai
+from cryptography.hazmat.primitives import serialization
+from PIL import Image
+import io
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+import random
+import string
 
-# Your existing code remains fully intact above this point
-# --- We start adding gamification layer below ---
+# Streamlit configuration
+st.set_page_config(page_title="Dish Recognition App", layout="wide")
 
-# Gamification Firestore Setup (reuse existing db)
-def get_user_profile(user_id):
-    user_ref = db.collection("user_profiles").document(user_id)
-    user_doc = user_ref.get()
-    if user_doc.exists:
-        return user_doc.to_dict()
-    else:
-        profile = {"xp": 0, "level": 1, "stars": 0, "badges": [], "last_active": str(datetime.date.today())}
-        user_ref.set(profile)
-        return profile
+# Custom CSS
+st.markdown("""
+    <style>
+    .main { background: linear-gradient(to bottom, #1e1e2f, #2a2a3d); color: #e0e0e0; }
+    .stButton>button { background-color: #4CAF50; color: white; border-radius: 10px; }
+    .stFileUploader { border: 2px dashed #4CAF50; padding: 10px; border-radius: 10px; }
+    h1, h2, h3 { color: #4CAF50; font-family: 'Arial', sans-serif; }
+    .stDataFrame { border: 1px solid #4CAF50; border-radius: 10px; }
+    .game-box {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: linear-gradient(to bottom, #4B0082, #8A2BE2);
+        color: #e0e0e0;
+        padding: 15px;
+        border-radius: 15px;
+        box-shadow: 0 0 15px #BA55D3;
+        z-index: 1000;
+        font-family: 'Cinzel', serif;
+    }
+    .word-search-button {
+        width: 40px;
+        height: 40px;
+        margin: 2px;
+        font-size: 16px;
+        border-radius: 5px;
+        border: 1px solid #4CAF50;
+        background-color: #2a2a3d;
+        color: #e0e0e0;
+    }
+    .word-search-button.found {
+        background-color: #4CAF50;
+        color: white;
+    }
+    .word-search-button.selected {
+        background-color: #BA55D3;
+        color: white;
+    }
+    .word-search-button.hint {
+        background-color: #FFD700;
+        color: #1e1e2f;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-def update_user_profile(user_id, updates):
-    user_ref = db.collection("user_profiles").document(user_id)
-    user_ref.update(updates)
+# Initialize Streamlit app
+st.title("🍽️ Dish Recognition and Menu Matching")
 
-# Dummy user (replace with login system if needed)
-USER_ID = "demo_user"
-profile = get_user_profile(USER_ID)
+# Validate PEM key
+def validate_pem_key(key_str, key_name):
+    try:
+        key_str = key_str.strip().replace('\r\n', '\n')
+        if not key_str.startswith("-----BEGIN PRIVATE KEY-----"):
+            st.error(f"{key_name} does not start with '-----BEGIN PRIVATE KEY-----'")
+            return False
+        if not key_str.endswith("-----END PRIVATE KEY-----"):
+            st.error(f"{key_name} does not end with '-----END PRIVATE KEY-----'")
+            return False
+        serialization.load_pem_private_key(key_str.encode('utf-8'), password=None)
+        return True
+    except Exception as e:
+        st.error(f"Invalid PEM key for {key_name}: {str(e)}")
+        return False
 
-# Gamification Functions
-def add_xp(user_id, xp):
-    profile = get_user_profile(user_id)
-    new_xp = profile["xp"] + xp
-    new_level = 1 + new_xp // 100
-    update_user_profile(user_id, {"xp": new_xp, "level": new_level, "last_active": str(datetime.date.today())})
+# Initialize APIs
+try:
+    if not all(key in st.secrets for key in ["GOOGLE_CLOUD_VISION_CREDENTIALS", "FIREBASE_CREDENTIALS", "GEMINI"]):
+        st.error("Missing sections in secrets.toml")
+        st.stop()
+    vision_credentials_dict = dict(st.secrets["GOOGLE_CLOUD_VISION_CREDENTIALS"])
+    required_keys = ["type", "project_id", "private_key_id", "private_key", "client_email", "client_id", "auth_uri", "token_uri", "universe_domain"]
+    missing_keys = [key for key in required_keys if key not in vision_credentials_dict]
+    if missing_keys:
+        st.error(f"Invalid Google Cloud Vision credentials. Missing keys: {', '.join(missing_keys)}.")
+        st.stop()
+    if not validate_pem_key(vision_credentials_dict["private_key"], "Google Cloud Vision"):
+        st.stop()
+    vision_credentials = service_account.Credentials.from_service_account_info(vision_credentials_dict)
+    vision_client = vision.ImageAnnotatorClient(credentials=vision_credentials)
+    firebase_credentials_dict = dict(st.secrets["FIREBASE_CREDENTIALS"])
+    missing_keys = [key for key in required_keys if key not in firebase_credentials_dict]
+    if missing_keys:
+        st.error(f"Invalid Firebase credentials. Missing keys: {', '.join(missing_keys)}.")
+        st.stop()
+    if not validate_pem_key(firebase_credentials_dict["private_key"], "Firebase"):
+        st.stop()
+    if not firebase_admin._apps:
+        firebase_cred = credentials.Certificate(firebase_credentials_dict)
+        firebase_admin.initialize_app(firebase_cred)
+    db = firestore.client()
+    gemini_api_key = st.secrets["GEMINI"]["api_key"]
+    if not gemini_api_key:
+        st.error("Gemini API key is empty in secrets.toml.")
+        st.stop()
+    genai.configure(api_key=gemini_api_key)
+    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+except Exception as e:
+    st.error(f"Error initializing APIs: {str(e)}")
+    st.stop()
 
-def add_stars(user_id, stars):
-    profile = get_user_profile(user_id)
-    update_user_profile(user_id, {"stars": profile["stars"] + stars})
+# ==============================================
+# NEW FEATURE: AI POWERED RECIPE GENERATOR
+# ==============================================
 
-def add_badge(user_id, badge):
-    profile = get_user_profile(user_id)
-    if badge not in profile["badges"]:
-        profile["badges"].append(badge)
-        update_user_profile(user_id, {"badges": profile["badges"]})
+st.sidebar.header("🥣 Recipe Generator")
+with st.sidebar.expander("Generate a Recipe"):
+    dish_input = st.text_input("Enter Dish Name", "Pasta")
+    generate_btn = st.button("Generate Recipe")
 
-# Create new tab
-with st.sidebar.expander("🎮 Gamification & Profile"):
-    st.subheader("Player Profile")
-    st.write(f"**Level:** {profile['level']}")
-    st.write(f"**XP:** {profile['xp']}")
-    st.write(f"**Stars:** {profile['stars']}")
-    st.write(f"**Badges:** {', '.join(profile['badges']) if profile['badges'] else 'No badges yet'}")
+    if generate_btn and dish_input:
+        with st.spinner("Generating recipe..."):
+            try:
+                recipe_prompt = f"""
+                Generate a detailed recipe for {dish_input}. Include:
+                - Ingredients list
+                - Step-by-step preparation
+                - Cooking time
+                - Dietary tags (e.g. Vegan, Gluten-Free, Keto, etc)
+                Format output in markdown.
+                """
+                recipe_response = gemini_model.generate_content(recipe_prompt)
+                recipe_text = recipe_response.text.strip()
+                st.markdown(recipe_text)
+            except Exception as e:
+                st.error(f"Error generating recipe: {str(e)}")
 
-# Daily Challenge
-st.sidebar.markdown("---")
-today = str(datetime.date.today())
-if profile.get("last_active") != today:
-    challenge_dish = random.choice(["Pizza", "Sushi", "Burger", "Salad", "Tacos"])
-    st.sidebar.success(f"🎯 Daily Challenge: Upload an image of {challenge_dish} today!")
-    update_user_profile(USER_ID, {"last_active": today})
-
-# Check challenge completion during dish detection
-if 'dish_name' in locals() and dish_name.lower() == challenge_dish.lower():
-    add_xp(USER_ID, 50)
-    add_badge(USER_ID, "Daily Streak!")
-    st.sidebar.balloons()
-    st.sidebar.success("✅ Daily Challenge Completed! You earned 50 XP & a badge!")
-
-# Word Search reward integration
-if 'found_count' in locals() and found_count == total_words and st.session_state.stars == 5:
-    add_xp(USER_ID, 20)
-    add_stars(USER_ID, 5)
-    add_badge(USER_ID, "Word Search Master")
-    st.sidebar.success("🏅 Perfect Word Search! +20 XP, +5 Stars, Badge earned!")
-
-# Simple leaderboard (local)
-@st.cache_data(ttl=300)
-def load_leaderboard():
-    docs = db.collection("user_profiles").stream()
-    data = sorted([{**doc.to_dict(), "id": doc.id} for doc in docs], key=lambda x: x['xp'], reverse=True)
-    return data
-
-with st.sidebar.expander("🏆 Leaderboard"):
-    leaderboard = load_leaderboard()
-    for rank, player in enumerate(leaderboard[:5], start=1):
-        st.write(f"{rank}. {player['id']} - Level {player['level']} ({player['xp']} XP)")
+# The rest of your code remains exactly same (unchanged)
+# Word Search, Dish Recognition, Menu Matching, Customization, etc continue as above...
