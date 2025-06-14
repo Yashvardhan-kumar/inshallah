@@ -289,7 +289,6 @@ with tab3:
     normalized_dietary = [d.lower().replace("-", "").replace(" ", "") for d in dietary]
     normalized_allergies = allergies  # allergies we will map below
 
-    # Allergy mapping
     allergy_map = {
         "Nut-Free": ["almond", "cashew", "walnut", "pecan", "hazelnut", "macadamia", "brazil nut", "pistachio", "peanut", "nut"],
         "Shellfish-Free": ["shrimp", "prawn", "crab", "lobster", "oyster", "scallop", "clam", "mussel", "shellfish"],
@@ -302,8 +301,11 @@ with tab3:
         tags = [tag.lower().replace("-", "").replace(" ", "") for tag in item.get("dietary_tags", [])]
         ingredients = [ing.lower() for ing in item.get("ingredients", [])]
 
-        # Diet filter
-        diet_ok = not normalized_dietary or any(nd in tags for nd in normalized_dietary)
+        # If menu item has no tags → assume it's compatible
+        if not tags:
+            diet_ok = True
+        else:
+            diet_ok = not normalized_dietary or any(nd in tags for nd in normalized_dietary)
 
         # Allergy filter
         allergy_ok = True
@@ -323,7 +325,6 @@ with tab3:
         st.write(pd.DataFrame(filtered_menu))
     else:
         st.warning("No menu items match your filters.")
-
 
 
 # TAB 5: Leaderboard & Customer Feedback
