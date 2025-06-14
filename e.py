@@ -276,55 +276,43 @@ with tab2:
         st.error(f"AI analysis failed: {e}")
 
 
-# TAB 3: Custom Filtering Options
+# TAB 3: Custom Filtering Options (Fixed Allergy Filter)
 with tab3:
     st.header("Custom Menu Filters")
     portion = st.selectbox("Portion Size", ["Regular", "Small", "Large"])
     ingredient_swap = st.text_input("Ingredient Swap")
 
+    allergy_map = {
+        "Dairy-Free": ["milk", "cheese", "butter", "yogurt", "cream", "ghee", "curd", "paneer"],
+        "Nut-Free": ["almond", "peanut", "cashew", "hazelnut", "walnut", "pistachio"],
+        "Shellfish-Free": ["shrimp", "prawn", "lobster", "crab", "scallop"],
+        "Soy-Free": ["soy", "tofu", "soymilk", "edamame"],
+    }
+
     filtered_menu = []
     for item in menu:
         tags = item.get("dietary_tags", [])
-        ingredients = item.get("ingredients", [])
-        if (not dietary or any(d in tags for d in dietary)) and \
-           (not allergies or all(a not in ingredients for a in allergies)):
+        ingredients = [ing.lower() for ing in item.get("ingredients", [])]
+
+        # Check dietary preferences
+        diet_ok = (not dietary or any(d in tags for d in dietary))
+
+        # Check allergies strictly using allergy_map
+        allergy_ok = True
+        for allergy in allergies:
+            forbidden = allergy_map.get(allergy, [])
+            if any(f in ing for f in forbidden for ing in ingredients):
+                allergy_ok = False
+                break
+
+        if diet_ok and allergy_ok:
             item_copy = item.copy()
             item_copy["portion_size"] = portion
             item_copy["ingredient_swap"] = ingredient_swap
             filtered_menu.append(item_copy)
+
     st.write(pd.DataFrame(filtered_menu))
 
-# TAB 4: Staff Gamification Upload
-with tab4:
-    st.header("Visual Menu Challenge Submission")
-
-    with st.form("challenge_form"):
-        staff_name = st.text_input("Staff Name")
-        dish_name = st.text_input("Dish Name")
-        ingredients = st.text_area("Ingredients (comma separated)")
-        plating_style = st.text_input("Plating Style")
-        challenge_image = st.file_uploader("Dish Photo", type=["jpg", "png"])
-        trendy = st.checkbox("Matches current food trends")
-        diet_match = st.checkbox("Matches dietary preferences")
-
-        submitted = st.form_submit_button("Submit Dish")
-
-        if submitted and challenge_image:
-            img_bytes = challenge_image.read()
-            img_blob = db.collection("visual_challenges").document()
-            img_blob.set({
-                "staff": staff_name,
-                "dish": dish_name,
-                "ingredients": [i.strip() for i in ingredients.split(",")],
-                "style": plating_style,
-                "trendy": trendy,
-                "diet_match": diet_match,
-                "timestamp": time.time(),
-                "views": 0,
-                "likes": 0,
-                "orders": 0
-            })
-            st.success("Dish submitted successfully!")
 
 # TAB 5: Leaderboard & Customer Feedback
 with tab5:
